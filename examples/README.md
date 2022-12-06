@@ -1,4 +1,4 @@
-# ndk-examples
+# examples
 
 Collection of examples showing different parts of the libraries.
 
@@ -17,10 +17,3 @@ Prints `hello world` in the console
 $ cargo apk build --example hello_world
 ```
 
-### jni_audio
-
-Prints output audio devices in the console
-
-```console
-$ cargo apk run --example jni_audio
-```
