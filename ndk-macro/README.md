@@ -1,3 +1,8 @@
+> ⚠️ **This project is no longer being actively maintained**
+>
+> _It's recommended that new projects look at using the [android-activity](https://crates.io/crates/android-activity)
+> crate for building standalone Rust applications on Android_
+
 # ndk-macro
 
 Implementation of the attribute procedural macro `main` which applied directly to main function.
