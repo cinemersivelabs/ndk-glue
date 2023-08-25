@@ -51,6 +51,8 @@ pub fn android_log(level: Level, tag: &CStr, msg: &CStr) {
     }
 }
 
+static mut MAIN_THREAD_JOIN_HANDLE: Option<std::thread::JoinHandle<()>> = None;
+
 static NATIVE_ACTIVITY: Lazy<RwLock<Option<NativeActivity>>> = Lazy::new(Default::default);
 static NATIVE_WINDOW: Lazy<RwLock<Option<NativeWindow>>> = Lazy::new(Default::default);
 static INPUT_QUEUE: Lazy<RwLock<Option<InputQueue>>> = Lazy::new(Default::default);
@@ -279,26 +281,28 @@ pub unsafe fn init(
     let looper_ready = Arc::new(Condvar::new());
     let signal_looper_ready = looper_ready.clone();
 
-    thread::spawn(move || {
-        let looper = ThreadLooper::prepare();
-        let foreign = looper.into_foreign();
-        foreign
-            .add_fd(
-                PIPE[0],
-                NDK_GLUE_LOOPER_EVENT_PIPE_IDENT,
-                FdEvent::INPUT,
-                std::ptr::null_mut(),
-            )
-            .unwrap();
+    unsafe {
+        MAIN_THREAD_JOIN_HANDLE = Some(thread::spawn(move || {
+            let looper = ThreadLooper::prepare();
+            let foreign = looper.into_foreign();
+            foreign
+                .add_fd(
+                    PIPE[0],
+                    NDK_GLUE_LOOPER_EVENT_PIPE_IDENT,
+                    FdEvent::INPUT,
+                    std::ptr::null_mut(),
+                )
+                .unwrap();
 
-        {
-            let mut locked_looper = LOOPER.lock().unwrap();
-            locked_looper.replace(foreign);
-            signal_looper_ready.notify_one();
-        }
+            {
+                let mut locked_looper = LOOPER.lock().unwrap();
+                locked_looper.replace(foreign);
+                signal_looper_ready.notify_one();
+            }
 
-        main()
-    });
+            main()
+        }));
+    }
 
     // Don't return from this function (`ANativeActivity_onCreate`) until the thread
     // has created its `ThreadLooper` and assigned it to the static `LOOPER`
@@ -341,6 +345,11 @@ unsafe extern "C" fn on_destroy(activity: *mut ANativeActivity) {
     let mut native_activity_guard = NATIVE_ACTIVITY.write();
     let native_activity = native_activity_guard.take().unwrap();
     assert_eq!(native_activity.ptr().as_ptr(), activity);
+    drop(unsafe {
+        MAIN_THREAD_JOIN_HANDLE
+            .take()
+            .map(|join_handle| join_handle.join())
+    });
 }
 
 unsafe extern "C" fn on_configuration_changed(activity: *mut ANativeActivity) {
